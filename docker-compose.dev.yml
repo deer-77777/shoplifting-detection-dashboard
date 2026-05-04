@@ -1,0 +1,19 @@
+# Local-development override: drops the NVIDIA GPU reservation and switches
+# inference to CPU so the stack runs on machines without an NVIDIA GPU /
+# nvidia-container-toolkit.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Caveats:
+# - YOLO inference on CPU is much slower; expect <1 fps with default settings.
+# - Lower SAMPLE_FPS (e.g. 2) so the worker doesn't fall hopelessly behind.
+# - Requires Docker Compose v2.24+ for the `!reset` tag.
+
+services:
+  backend:
+    # Remove the GPU reservation entirely on hosts without nvidia runtime.
+    deploy: !reset null
+    environment:
+      DEVICE: cpu
+      SAMPLE_FPS: 2

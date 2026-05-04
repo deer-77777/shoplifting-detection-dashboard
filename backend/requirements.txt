@@ -1,0 +1,21 @@
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+pydantic-settings==2.6.1
+SQLAlchemy==2.0.36
+alembic==1.13.3
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+greenlet==3.1.1
+
+# inference
+torch==2.4.1
+torchvision==0.19.1
+ultralytics==8.3.40
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+lap==0.5.12
+
+# misc
+python-multipart==0.0.12
+anyio==4.6.2.post1

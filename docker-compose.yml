@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    pull_policy: never
+    container_name: lp_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lpuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lppass}
+      POSTGRES_DB: ${POSTGRES_DB:-lossprev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lpuser} -d ${POSTGRES_DB:-lossprev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lpnet
+
+  backend:
+    image: lossprev/backend:1.0
+    pull_policy: never
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lp_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lpuser}:${POSTGRES_PASSWORD:-lppass}@postgres:5432/${POSTGRES_DB:-lossprev}
+      MODEL_PATH: /app/best.pt
+      DEVICE: ${DEVICE:-cuda:0}
+      CLIP_DIR: /app/storage/clips
+      THUMB_DIR: /app/storage/thumbnails
+      SAMPLE_FPS: ${SAMPLE_FPS:-8}
+      CONF_THRESHOLD: ${CONF_THRESHOLD:-0.5}
+      COOLDOWN_SECONDS: ${COOLDOWN_SECONDS:-30}
+      PRE_ROLL_SECONDS: ${PRE_ROLL_SECONDS:-5}
+      POST_ROLL_SECONDS: ${POST_ROLL_SECONDS:-10}
+      POSITIVE_REQUIRED: ${POSITIVE_REQUIRED:-5}
+      POSITIVE_WINDOW: ${POSITIVE_WINDOW:-10}
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./best.pt:/app/best.pt:ro
+      - backend_storage:/app/storage
+    ports:
+      - "8000:8000"
+    networks:
+      - lpnet
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  frontend:
+    image: lossprev/frontend:1.0
+    pull_policy: never
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lp_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    networks:
+      - lpnet
+
+volumes:
+  postgres_data:
+  backend_storage:
+
+networks:
+  lpnet:
+    driver: bridge
