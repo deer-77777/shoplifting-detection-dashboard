@@ -47,7 +47,7 @@ images so you can exercise the full pipeline end-to-end.
 | [docs/API.md](docs/API.md) | REST + WebSocket reference |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Day-to-day operator guide: adding cameras, tuning thresholds, retention, sizing |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local dev workflow, image rebuilds, troubleshooting |
-| [AIRGAP.md](AIRGAP.md) | Building on an internet host, running on an air-gapped store host |
+| [AIRGAP.md](AIRGAP.md) | Building on an internet host, running on an air-gapped target — covers both `airgap-bundle.sh` (prod / GPU) and `airgap-bundle-dev.sh` (dev / CPU + test infra) |
 
 ## Stack
 

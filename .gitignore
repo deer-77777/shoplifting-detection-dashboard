@@ -28,4 +28,10 @@ frontend/.vite/
 # Docker build leftovers
 *.log
 
+# Air-gap bundles (output of airgap-bundle*.sh — multi-GB, never commit)
+# Keep the scripts themselves — only the produced folders + tarballs are excluded.
+airgap-bundle/
+airgap-bundle-dev/
+airgap-bundle*.tar.gz
+
 test-stream/images
