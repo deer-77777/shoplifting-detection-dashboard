@@ -39,15 +39,22 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsOut:
         )
     ).scalar_one()
 
-    # Camera health.
+    # Camera health (excludes soft-deleted cameras).
     total_cameras = (
-        await db.execute(select(func.count()).select_from(Camera))
+        await db.execute(
+            select(func.count())
+            .select_from(Camera)
+            .where(Camera.is_deleted.is_(False))
+        )
     ).scalar_one()
     online_cameras = (
         await db.execute(
             select(func.count())
             .select_from(Camera)
-            .where(Camera.status == "online")
+            .where(
+                Camera.status == "online",
+                Camera.is_deleted.is_(False),
+            )
         )
     ).scalar_one()
 
@@ -73,7 +80,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsOut:
         d = (fourteen_days_ago + timedelta(days=i)).strftime("%Y-%m-%d")
         by_day.append(DayBucket(day=d, count=counts_by_day.get(d, 0)))
 
-    # by_camera (all cameras, even with zero events).
+    # by_camera (all *active* cameras, even with zero events).
     by_camera_rows = (
         await db.execute(
             select(
@@ -83,6 +90,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsOut:
             )
             .select_from(Camera)
             .outerjoin(Event, Event.camera_id == Camera.id)
+            .where(Camera.is_deleted.is_(False))
             .group_by(Camera.id, Camera.name)
             .order_by(func.count(Event.id).desc(), Camera.name.asc())
         )

@@ -9,14 +9,39 @@ import { useI18n } from "../i18n";
 
 const PAGE_SIZE = 50;
 
+// `<input type="datetime-local">` wants `YYYY-MM-DDTHH:mm` in *local* time
+// (no timezone suffix). Build it from a Date so we follow the user's clock.
+function localDatetimeInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
+function todayBoundsLocal(): { from: string; to: string } {
+  // 00:00 today (local) ... 00:00 tomorrow (local) — i.e. "today 0–24".
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { from: localDatetimeInput(start), to: localDatetimeInput(end) };
+}
+
 export function EventsPage() {
-  const { data: cameras } = useCameras();
   const { t } = useI18n();
   const [cameraId, setCameraId] = useState<string>("");
-  const [from, setFrom] = useState<string>("");
-  const [to, setTo] = useState<string>("");
+  const initialBounds = todayBoundsLocal();
+  const [from, setFrom] = useState<string>(initialBounds.from);
+  const [to, setTo] = useState<string>(initialBounds.to);
+  const [includeDeleted, setIncludeDeleted] = useState<boolean>(false);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Camera dropdown reflects the same toggle the events list uses: when
+  // 'show deleted' is on, both deleted and active cameras appear in the
+  // selector so you can filter to a deleted one.
+  const { data: cameras } = useCameras({ includeDeleted });
 
   const query = useMemo(
     () => ({
@@ -25,8 +50,9 @@ export function EventsPage() {
       until: to ? new Date(to).toISOString() : undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
+      include_deleted_cameras: includeDeleted,
     }),
-    [cameraId, from, to, page],
+    [cameraId, from, to, page, includeDeleted],
   );
 
   const { data: events, isLoading } = useEvents(query);
@@ -51,7 +77,9 @@ export function EventsPage() {
             <option value="">{t("events.filter.allCameras")}</option>
             {cameras?.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.is_deleted
+                  ? `${c.name} [${t("events.deletedTag")}]`
+                  : c.name}
               </option>
             ))}
           </select>
@@ -84,14 +112,27 @@ export function EventsPage() {
           type="button"
           className="btn"
           onClick={() => {
+            const b = todayBoundsLocal();
             setCameraId("");
-            setFrom("");
-            setTo("");
+            setFrom(b.from);
+            setTo(b.to);
+            setIncludeDeleted(false);
             setPage(0);
           }}
         >
           {t("events.filter.reset")}
         </button>
+        <label className="flex items-center gap-2 text-[13px] ml-auto cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeDeleted}
+            onChange={(e) => {
+              setIncludeDeleted(e.target.checked);
+              setPage(0);
+            }}
+          />
+          <span>{t("events.filter.showDeleted")}</span>
+        </label>
       </div>
 
       <div className="surface overflow-hidden">
@@ -153,7 +194,18 @@ export function EventsPage() {
                   <td className="px-3 py-2.5 text-mono">
                     {format(new Date(ev.started_at), "yyyy-MM-dd HH:mm:ss")}
                   </td>
-                  <td className="px-3 py-2.5">{cameraName(ev.camera_id)}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">
+                        {ev.camera_name ?? cameraName(ev.camera_id)}
+                      </span>
+                      {ev.camera_deleted && (
+                        <span className="shrink-0 text-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-[var(--color-accent-dim)] text-[var(--color-accent)]">
+                          {t("events.deletedTag")}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-3 py-2.5 text-mono">#{ev.track_id}</td>
                   <td className="px-3 py-2.5 text-mono">
                     {ev.peak_confidence.toFixed(2)}

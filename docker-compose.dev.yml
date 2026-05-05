@@ -17,3 +17,40 @@ services:
     environment:
       DEVICE: cpu
       SAMPLE_FPS: 2
+      # Force TCP for RTSP — UDP doesn't traverse the bridge network reliably
+      # and most real IP cameras prefer TCP anyway.
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
+
+  # Virtual RTSP server. Use this to test the camera-worker pipeline without a
+  # real IP camera. Add `rtsp://mediamtx:8554/stream1` as a camera in the UI.
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: lp_mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554"   # RTSP — also reachable from the host as rtsp://localhost:8554
+    networks:
+      - lpnet
+
+  # Continuously pushes a stream into mediamtx so there's always something to
+  # connect to. Reuses the backend image (it already ships ffmpeg). Replace
+  # the testsrc filter with `-i /test/video.mp4` + a volume mount to push a
+  # real shoplifting clip when you want to exercise the YOLO model end-to-end.
+  rtsp-publisher:
+    image: lossprev/backend:1.0
+    pull_policy: never
+    container_name: lp_rtsp_publisher
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    networks:
+      - lpnet
+    environment:
+      RTSP_DEST: rtsp://mediamtx:8554/stream1
+      VIDEO_DIR: /test
+    volumes:
+      # Drop a video file in ./test-stream/ on the host and the publisher
+      # will loop it instead of the testsrc pattern. No file -> testsrc.
+      - ./test-stream:/test:ro
+      - ./tools/rtsp-publisher.sh:/usr/local/bin/rtsp-publisher.sh:ro
+    entrypoint: ["bash", "/usr/local/bin/rtsp-publisher.sh"]

@@ -32,6 +32,10 @@ class Camera(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     events: Mapped[list["Event"]] = relationship(
         back_populates="camera", cascade="all, delete-orphan"
@@ -64,3 +68,23 @@ class Event(Base):
     )
 
     camera: Mapped[Camera] = relationship(back_populates="events")
+
+
+class AppSettings(Base):
+    """Singleton table (id=1, enforced via CHECK) for runtime-tunable knobs.
+
+    Env-var defaults from :mod:`app.config` seed the row on first boot.
+    """
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    conf_threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    positive_required: Mapped[int] = mapped_column(Integer, nullable=False)
+    positive_window: Mapped[int] = mapped_column(Integer, nullable=False)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    pre_roll_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    post_roll_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )

@@ -19,6 +19,7 @@ const dict = {
     "nav.events": "Events",
     "nav.cameras": "Cameras",
     "nav.stats": "Stats",
+    "nav.settings": "Settings",
     "ws.online": "Online",
     "ws.connecting": "Connecting",
     "ws.offline": "Offline",
@@ -30,10 +31,17 @@ const dict = {
     // pages — Live
     "live.title": "Live",
     "live.subtitle": "Real-time event feed and camera health",
+    "live.previews": "Camera Previews",
+    "live.previews.range": "Live MJPEG",
     "live.recent": "Recent Events",
     "live.recent.range": "Last 20",
     "live.empty.title": "No events yet.",
     "live.empty.body": "Waiting for the first confirmed incident",
+    "live.online": "Online",
+    "live.noCameras.title": "No cameras configured.",
+    "live.noCameras.body": "Add one on the Cameras tab to start streaming.",
+    "preview.connecting": "Connecting…",
+    "preview.expand": "Click to expand",
 
     // pages — Events
     "events.title": "Events",
@@ -43,6 +51,8 @@ const dict = {
     "events.filter.from": "From",
     "events.filter.to": "To",
     "events.filter.reset": "Reset",
+    "events.filter.showDeleted": "Show deleted cameras",
+    "events.deletedTag": "Deleted",
     "events.col.thumb": "Thumb",
     "events.col.started": "Started",
     "events.col.camera": "Camera",
@@ -97,6 +107,40 @@ const dict = {
     "stats.byCamera.title": "Events per Camera",
     "stats.byCamera.range": "All-time",
 
+    // pages — Settings
+    "settings.title": "Settings",
+    "settings.subtitle": "Detection thresholds applied to every camera",
+    "settings.loading": "Loading…",
+    "settings.seconds": "seconds",
+    "settings.confThreshold.label": "Confidence threshold",
+    "settings.confThreshold.hint":
+      "Minimum YOLO confidence for a frame to count as positive. Lower = more events, more false positives.",
+    "settings.positiveRequired.label": "Positives required (N)",
+    "settings.positiveRequired.hint":
+      "Number of positive frames within the rolling window before a track is confirmed.",
+    "settings.positiveWindow.label": "Window size (M)",
+    "settings.positiveWindow.hint":
+      "How many of the most recent visible frames the N-of-M check looks at.",
+    "settings.cooldownSeconds.label": "Cooldown",
+    "settings.cooldownSeconds.hint":
+      "After confirmation, the same track is locked out for this many seconds before it can fire another event.",
+    "settings.preRollSeconds.label": "Pre-roll",
+    "settings.preRollSeconds.hint":
+      "How many seconds before the confirmation get included at the start of the saved clip. Bounded by RAM (per-camera buffer = pre × fps × frame size).",
+    "settings.postRollSeconds.label": "Post-roll",
+    "settings.postRollSeconds.hint":
+      "How many seconds after the confirmation get appended to the saved clip before it is finalised to disk.",
+    "settings.action.save": "Save",
+    "settings.action.saving": "Saving…",
+    "settings.action.discard": "Discard",
+    "settings.action.reset": "Reset to defaults",
+    "settings.error.windowBelowRequired":
+      "Window size (M) must be at least as large as positives required (N).",
+    "settings.toast.saved": "Settings saved",
+    "settings.toast.reset": "Settings reset to defaults",
+    "settings.toast.savedBody":
+      "Cameras restart briefly when N or M changes.",
+
     // strip
     "strip.loading": "Loading cameras…",
     "strip.empty": "No cameras configured — add one on the Cameras tab",
@@ -139,6 +183,7 @@ const dict = {
     "nav.events": "イベント",
     "nav.cameras": "カメラ",
     "nav.stats": "統計",
+    "nav.settings": "設定",
     "ws.online": "接続中",
     "ws.connecting": "接続中…",
     "ws.offline": "切断",
@@ -149,10 +194,17 @@ const dict = {
 
     "live.title": "ライブ",
     "live.subtitle": "リアルタイムイベントとカメラ状況",
+    "live.previews": "カメラ映像",
+    "live.previews.range": "ライブMJPEG",
     "live.recent": "最新イベント",
     "live.recent.range": "最新20件",
     "live.empty.title": "イベントはまだありません。",
     "live.empty.body": "最初の検知を待機中…",
+    "live.online": "稼働中",
+    "live.noCameras.title": "カメラが未登録です。",
+    "live.noCameras.body": "Cameras タブで追加してください。",
+    "preview.connecting": "接続中…",
+    "preview.expand": "クリックで拡大",
 
     "events.title": "イベント",
     "events.subtitle": "過去の事案アーカイブ",
@@ -161,6 +213,8 @@ const dict = {
     "events.filter.from": "開始",
     "events.filter.to": "終了",
     "events.filter.reset": "リセット",
+    "events.filter.showDeleted": "削除済みカメラを表示",
+    "events.deletedTag": "削除済み",
     "events.col.thumb": "画像",
     "events.col.started": "開始時刻",
     "events.col.camera": "カメラ",
@@ -212,6 +266,39 @@ const dict = {
     "stats.byDay.range": "過去14日",
     "stats.byCamera.title": "カメラ別イベント数",
     "stats.byCamera.range": "全期間",
+
+    "settings.title": "設定",
+    "settings.subtitle": "全カメラに適用される検知しきい値",
+    "settings.loading": "読み込み中…",
+    "settings.seconds": "秒",
+    "settings.confThreshold.label": "信頼度しきい値",
+    "settings.confThreshold.hint":
+      "ポジティブと判定するための最小信頼度。低いほど検出が増え、誤検出も増えます。",
+    "settings.positiveRequired.label": "必要ポジティブ数 (N)",
+    "settings.positiveRequired.hint":
+      "ウィンドウ内でこの数のポジティブが揃うとトラックを確定します。",
+    "settings.positiveWindow.label": "ウィンドウ幅 (M)",
+    "settings.positiveWindow.hint":
+      "N-of-M 判定が参照する直近の可視フレーム数。",
+    "settings.cooldownSeconds.label": "クールダウン",
+    "settings.cooldownSeconds.hint":
+      "確定後、同一トラックがこの秒数だけ再発火しないようにロックされます。",
+    "settings.preRollSeconds.label": "プリロール",
+    "settings.preRollSeconds.hint":
+      "確定の前、何秒ぶん前のフレームをクリップ先頭に含めるか。カメラごとに RAM を消費します (pre × fps × フレームサイズ)。",
+    "settings.postRollSeconds.label": "ポストロール",
+    "settings.postRollSeconds.hint":
+      "確定の後、何秒ぶんフレームを録画してからクリップを書き出すか。",
+    "settings.action.save": "保存",
+    "settings.action.saving": "保存中…",
+    "settings.action.discard": "変更を破棄",
+    "settings.action.reset": "デフォルトに戻す",
+    "settings.error.windowBelowRequired":
+      "ウィンドウ幅 (M) は必要ポジティブ数 (N) 以上にしてください。",
+    "settings.toast.saved": "設定を保存しました",
+    "settings.toast.reset": "設定をデフォルトに戻しました",
+    "settings.toast.savedBody":
+      "N または M を変更したときはカメラが一時的に再接続します。",
 
     "strip.loading": "カメラを読み込み中…",
     "strip.empty":

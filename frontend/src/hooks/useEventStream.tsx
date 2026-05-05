@@ -10,7 +10,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { WsMessage } from "../api/types";
-import { camerasKey } from "./useCameras";
 import { statsKey } from "./useStats";
 
 type ConnectionState = "connecting" | "open" | "closed";
@@ -81,7 +80,7 @@ export function EventStreamProvider({ children }: { children: ReactNode }) {
           qc.invalidateQueries({ queryKey: ["events"] });
           qc.invalidateQueries({ queryKey: statsKey });
         } else if (msg.type === "camera.status") {
-          qc.invalidateQueries({ queryKey: camerasKey });
+          qc.invalidateQueries({ queryKey: ["cameras"] });
         }
 
         for (const fn of subscribers.current) {

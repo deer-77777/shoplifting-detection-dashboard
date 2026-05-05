@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { CamerasPage } from "./pages/Cameras";
 import { EventsPage } from "./pages/Events";
 import { LivePage } from "./pages/Live";
+import { SettingsPage } from "./pages/Settings";
 import { StatsPage } from "./pages/Stats";
 
 export function App() {
@@ -16,6 +17,7 @@ export function App() {
             <Route path="/events" element={<EventsPage />} />
             <Route path="/cameras" element={<CamerasPage />} />
             <Route path="/stats" element={<StatsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

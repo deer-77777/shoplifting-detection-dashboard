@@ -34,6 +34,7 @@ from app.config import settings
 from app.pipeline.clip_writer import make_paths, write_clip, write_thumbnail
 from app.pipeline.inference import YoloEngine
 from app.pipeline.state_machine import Confirmation, TrackStateMachine
+from app.runtime_settings import runtime
 
 log = logging.getLogger(__name__)
 
@@ -105,19 +106,37 @@ class CameraWorker(threading.Thread):
 
         self._stop_event = threading.Event()
         self._engine = YoloEngine()
+        # State-machine knobs come from the runtime cache so the values match
+        # the most recent settings update at the moment the worker spins up.
         self._state_machine = TrackStateMachine(
-            positive_required=settings.positive_required,
-            positive_window=settings.positive_window,
-            cooldown_seconds=settings.cooldown_seconds,
+            positive_required=runtime.positive_required,
+            positive_window=runtime.positive_window,
+            cooldown_seconds=runtime.cooldown_seconds,
             idle_drop_seconds=settings.track_idle_drop_seconds,
         )
         self._fps = max(1, int(settings.sample_fps))
-        self._pre_roll_size = self._fps * settings.pre_roll_seconds
-        self._post_roll_frames = self._fps * settings.post_roll_seconds
+        # Buffer/window sizes come from the runtime cache so the values match
+        # the most recent settings update at the moment the worker spins up.
+        self._pre_roll_size = self._fps * runtime.pre_roll_seconds
+        self._post_roll_frames = self._fps * runtime.post_roll_seconds
         self._pre_roll: deque[np.ndarray] = deque(maxlen=self._pre_roll_size)
         self._active: list[_ActiveRecording] = []
         self._last_status: str | None = None
         self._last_seen_emit: float = 0.0
+
+        # Latest sampled frame, used by the MJPEG preview endpoint.
+        # Lives behind a separate lock so HTTP clients reading at their own
+        # cadence don't block the inference thread.
+        self._preview_lock = threading.Lock()
+        self._preview_frame: np.ndarray | None = None
+        self._preview_ts: float = 0.0
+
+    def get_preview_frame(self) -> tuple[np.ndarray, float] | None:
+        """Return a copy of the most recent frame plus its capture timestamp."""
+        with self._preview_lock:
+            if self._preview_frame is None:
+                return None
+            return self._preview_frame, self._preview_ts
 
     # ----- lifecycle --------------------------------------------------------
 
@@ -219,6 +238,11 @@ class CameraWorker(threading.Thread):
         frame_copy = frame.copy()
         self._pre_roll.append(frame_copy)
 
+        # Publish the same frame to the preview channel.
+        with self._preview_lock:
+            self._preview_frame = frame_copy
+            self._preview_ts = ts
+
         # Periodically (≈1Hz) push last_seen up to the DB so the UI sees life.
         now_mono = time.monotonic()
         if now_mono - self._last_seen_emit >= 1.0:
@@ -246,8 +270,9 @@ class CameraWorker(threading.Thread):
             rec.feed(frame_copy)
 
         # Drive state machine; collect new confirmations.
+        conf_threshold = runtime.conf_threshold  # snapshot once per frame
         for det in detections:
-            is_pos = det.confidence >= settings.conf_threshold
+            is_pos = det.confidence >= conf_threshold
             confirmation = self._state_machine.observe(
                 track_id=det.track_id,
                 is_positive=is_pos,

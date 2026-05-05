@@ -60,6 +60,8 @@ class CameraOut(BaseModel):
     last_error: str | None
     enabled: bool
     created_at: datetime
+    is_deleted: bool
+    deleted_at: datetime | None
 
 
 # ----- events ---------------------------------------------------------------
@@ -82,6 +84,7 @@ class EventOut(BaseModel):
 
 class EventWithCamera(EventOut):
     camera_name: str | None = None
+    camera_deleted: bool = False
 
 
 # ----- stats ----------------------------------------------------------------
@@ -106,3 +109,26 @@ class StatsOut(BaseModel):
     total_cameras: int
     by_day: list[DayBucket]
     by_camera: list[CameraBucket]
+
+
+# ----- runtime settings -----------------------------------------------------
+
+
+class SettingsOut(BaseModel):
+    conf_threshold: float
+    positive_required: int
+    positive_window: int
+    cooldown_seconds: int
+    pre_roll_seconds: int
+    post_roll_seconds: int
+
+
+class SettingsUpdate(BaseModel):
+    conf_threshold: float | None = Field(default=None, ge=0.05, le=0.95)
+    positive_required: int | None = Field(default=None, ge=1, le=20)
+    positive_window: int | None = Field(default=None, ge=1, le=50)
+    cooldown_seconds: int | None = Field(default=None, ge=5, le=600)
+    # pre/post-roll seconds — pre-roll is bounded by RAM (buffer = pre × fps
+    # × frame size per camera); cap at 30s to keep memory predictable.
+    pre_roll_seconds: int | None = Field(default=None, ge=1, le=30)
+    post_roll_seconds: int | None = Field(default=None, ge=1, le=60)

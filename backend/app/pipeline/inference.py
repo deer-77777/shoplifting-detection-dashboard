@@ -17,6 +17,15 @@ from typing import Any
 import numpy as np
 
 from app.config import settings
+from app.runtime_settings import runtime
+
+# A more permissive tracker config used when the runtime CONF_THRESHOLD is
+# below ultralytics' default bytetrack thresholds (0.25 / 0.1). Without this
+# the predictor emits low-confidence detections that ByteTrack drops before
+# they can form tracks.
+_PERMISSIVE_TRACKER = os.path.join(
+    os.path.dirname(__file__), "bytetrack_permissive.yaml"
+)
 
 log = logging.getLogger(__name__)
 
@@ -64,13 +73,22 @@ class YoloEngine:
 
     def track(self, frame: np.ndarray) -> list[Detection]:
         self._ensure_loaded()
+        conf = runtime.conf_threshold
+        # If the runtime conf is lower than ultralytics' bytetrack defaults,
+        # use the permissive tracker config so low-confidence detections can
+        # still form tracks. Otherwise stick with the bundled default.
+        tracker = _PERMISSIVE_TRACKER if conf < 0.25 else "bytetrack.yaml"
         with GPU_LOCK:
             results = self._model.track(
                 frame,
                 persist=True,
-                tracker="bytetrack.yaml",
+                tracker=tracker,
                 device=self._device,
                 verbose=False,
+                # Push CONF_THRESHOLD down into the predictor; without this
+                # ultralytics applies its own default (0.25) and weaker
+                # detections never reach the state machine.
+                conf=conf,
             )
 
         detections: list[Detection] = []

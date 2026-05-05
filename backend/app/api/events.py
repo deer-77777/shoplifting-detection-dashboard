@@ -23,15 +23,18 @@ async def list_events(
     until: datetime | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    include_deleted_cameras: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ) -> list[EventWithCamera]:
     stmt = (
-        select(Event, Camera.name)
+        select(Event, Camera.name, Camera.is_deleted)
         .join(Camera, Camera.id == Event.camera_id)
         .order_by(Event.started_at.desc())
         .limit(limit)
         .offset(offset)
     )
+    if not include_deleted_cameras:
+        stmt = stmt.where(Camera.is_deleted.is_(False))
     if camera_id is not None:
         stmt = stmt.where(Event.camera_id == camera_id)
     if since is not None:
@@ -41,11 +44,12 @@ async def list_events(
 
     res = await db.execute(stmt)
     out: list[EventWithCamera] = []
-    for ev, camera_name in res.all():
+    for ev, camera_name, camera_deleted in res.all():
         out.append(
             EventWithCamera(
                 **EventOut.model_validate(ev).model_dump(),
                 camera_name=camera_name,
+                camera_deleted=bool(camera_deleted),
             )
         )
     return out
@@ -56,17 +60,18 @@ async def get_event(
     event_id: uuid.UUID, db: AsyncSession = Depends(get_db)
 ) -> EventWithCamera:
     stmt = (
-        select(Event, Camera.name)
+        select(Event, Camera.name, Camera.is_deleted)
         .join(Camera, Camera.id == Event.camera_id)
         .where(Event.id == event_id)
     )
     row = (await db.execute(stmt)).first()
     if row is None:
         raise HTTPException(status_code=404, detail="event not found")
-    ev, camera_name = row
+    ev, camera_name, camera_deleted = row
     return EventWithCamera(
         **EventOut.model_validate(ev).model_dump(),
         camera_name=camera_name,
+        camera_deleted=bool(camera_deleted),
     )
 
 

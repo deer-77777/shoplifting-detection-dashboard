@@ -1,0 +1,10 @@
+# Aggressively permissive ByteTrack for testing on weak-detection footage.
+# All thresholds floored so any detection above the predictor's CONF_THRESHOLD
+# can both START and EXTEND a track.
+tracker_type: bytetrack
+track_high_thresh: 0.01
+track_low_thresh: 0.001
+new_track_thresh: 0.01
+track_buffer: 60
+match_thresh: 0.95
+fuse_score: True

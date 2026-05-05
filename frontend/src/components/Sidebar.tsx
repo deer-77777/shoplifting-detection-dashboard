@@ -26,6 +26,7 @@ export function Sidebar() {
     { to: "/events", code: "02", labelKey: "nav.events" as const },
     { to: "/cameras", code: "03", labelKey: "nav.cameras" as const },
     { to: "/stats", code: "04", labelKey: "nav.stats" as const },
+    { to: "/settings", code: "05", labelKey: "nav.settings" as const },
   ];
 
   return (

@@ -42,12 +42,25 @@ export function EventDetailModal({
             <Field
               label={t("event.field.camera")}
               value={
-                <Link
-                  to="/cameras"
-                  className="hover:text-[var(--color-accent)]"
-                >
-                  {ev.camera_name ?? ev.camera_id}
-                </Link>
+                <span className="inline-flex items-center gap-2">
+                  {ev.camera_deleted ? (
+                    <span className="text-[var(--color-text-dim)]">
+                      {ev.camera_name ?? ev.camera_id}
+                    </span>
+                  ) : (
+                    <Link
+                      to="/cameras"
+                      className="hover:text-[var(--color-accent)]"
+                    >
+                      {ev.camera_name ?? ev.camera_id}
+                    </Link>
+                  )}
+                  {ev.camera_deleted && (
+                    <span className="text-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-[var(--color-accent-dim)] text-[var(--color-accent)]">
+                      {t("events.deletedTag")}
+                    </span>
+                  )}
+                </span>
               }
             />
             <Field

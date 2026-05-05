@@ -9,6 +9,8 @@ export interface Camera {
   last_error: string | null;
   enabled: boolean;
   created_at: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
 }
 
 export interface CameraCreate {
@@ -33,6 +35,7 @@ export interface DetectionEvent {
   id: string;
   camera_id: string;
   camera_name?: string | null;
+  camera_deleted?: boolean;
   track_id: number;
   started_at: string;
   ended_at: string;
@@ -53,6 +56,17 @@ export interface CameraBucket {
   camera_name: string;
   count: number;
 }
+
+export interface AppSettings {
+  conf_threshold: number;
+  positive_required: number;
+  positive_window: number;
+  cooldown_seconds: number;
+  pre_roll_seconds: number;
+  post_roll_seconds: number;
+}
+
+export type AppSettingsUpdate = Partial<AppSettings>;
 
 export interface Stats {
   total_events: number;

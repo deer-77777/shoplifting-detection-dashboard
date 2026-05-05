@@ -3,19 +3,29 @@
 The pre-roll buffer lives in RAM only. When a track is confirmed, the camera
 worker hands the writer:
 
-* a list of ``(timestamp, frame)`` tuples covering pre-roll + post-roll,
+* a list of frames covering pre-roll + post-roll,
 * the chosen "peak" frame (highest confidence) for the thumbnail, with a
   bounding box already drawn.
 
-We re-encode with ``mp4v`` for portability. TODO(production): remux the
-source H.264 NAL units instead of re-encoding to preserve original quality
-and CPU.
+We pipe frames through ffmpeg (libx264) instead of cv2.VideoWriter so the
+output is real H.264 / AVC, which every modern browser plays in <video>.
+The bundled opencv-python-headless wheels do not ship with libx264 linked
+in, so cv2.VideoWriter(..., 'avc1') silently falls back to mpeg4/mp4v —
+which Chrome, Firefox, and Safari all refuse to render.
+
+`-movflags +faststart` puts the moov atom at the head of the file so the
+browser can start playback before the entire clip is downloaded.
+
+TODO(production): remux source H.264 NAL units from the RTSP stream
+directly to skip re-encoding entirely.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -25,6 +35,11 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 
+def _even(n: int) -> int:
+    """libx264 with yuv420p needs even dimensions."""
+    return n - (n % 2)
+
+
 def write_clip(
     frames: list[np.ndarray],
     fps: int,
@@ -32,22 +47,66 @@ def write_clip(
 ) -> None:
     if not frames:
         raise ValueError("write_clip called with no frames")
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpeg not on PATH; cannot encode H.264 clip")
 
-    h, w = frames[0].shape[:2]
+    h0, w0 = frames[0].shape[:2]
+    w, h = _even(w0), _even(h0)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(out_path, fourcc, float(fps), (w, h))
-    if not writer.isOpened():
-        raise RuntimeError(f"VideoWriter failed to open at {out_path}")
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        # input: raw BGR frames over stdin at the worker's sample fps
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "bgr24",
+        "-s",
+        f"{w}x{h}",
+        "-r",
+        str(int(fps)),
+        "-i",
+        "-",
+        # output: H.264 in mp4 with web-friendly fast-start
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        out_path,
+    ]
+
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert proc.stdin is not None and proc.stderr is not None
 
     try:
         for f in frames:
             if f.shape[:2] != (h, w):
                 f = cv2.resize(f, (w, h))
-            writer.write(f)
+            proc.stdin.write(f.tobytes())
+        proc.stdin.close()
+        rc = proc.wait(timeout=60)
+    except Exception:
+        proc.kill()
+        proc.wait()
+        raise
     finally:
-        writer.release()
+        try:
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()
+        except Exception:
+            pass
+
+    if rc != 0:
+        err = proc.stderr.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"ffmpeg encode failed (rc={rc}): {err}")
 
 
 def write_thumbnail(

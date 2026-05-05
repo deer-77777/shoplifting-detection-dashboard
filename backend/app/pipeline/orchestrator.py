@@ -69,6 +69,24 @@ class PipelineOrchestrator:
             return
         self._loop.call_soon_threadsafe(self._reconcile_event.set)
 
+    def get_worker(self, camera_id: uuid.UUID) -> CameraWorker | None:
+        return self._workers.get(camera_id)
+
+    async def restart_all_workers(self) -> None:
+        """Stop every running worker; reconcile loop will respawn them.
+
+        Used by the settings API when a knob change requires the per-camera
+        state machine to be rebuilt (deque sizes, etc.). Safe to call from
+        any async context.
+        """
+        log.info("restarting all workers (settings change)")
+        for cid in list(self._workers.keys()):
+            await self._stop_worker(cid)
+        # Trigger an immediate reconcile so workers come back without waiting
+        # for the next scheduled tick.
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._reconcile_event.set)
+
     # ----- reconciliation loop ---------------------------------------------
 
     async def _run(self) -> None:
@@ -88,7 +106,12 @@ class PipelineOrchestrator:
 
     async def _reconcile(self) -> None:
         async with SessionLocal() as session:
-            res = await session.execute(select(Camera).where(Camera.enabled.is_(True)))
+            res = await session.execute(
+                select(Camera).where(
+                    Camera.enabled.is_(True),
+                    Camera.is_deleted.is_(False),
+                )
+            )
             enabled = list(res.scalars().all())
 
         desired_by_id: dict[uuid.UUID, Camera] = {c.id: c for c in enabled}
