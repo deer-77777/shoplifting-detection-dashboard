@@ -3,15 +3,17 @@
 Build the stack on an internet-connected machine, transfer one tarball
 to the target, run with no internet on the target side.
 
-There are **two bundles**, each producing a self-contained `.tar.gz`:
+There are **four bundles**, each producing a self-contained `.tar.gz`:
 
 | Bundle | Script | Target | Includes |
 |---|---|---|---|
 | **Production** | [`airgap-bundle.sh`](airgap-bundle.sh) | Store host with NVIDIA GPU + nvidia-container-toolkit | 3 images: backend, frontend, postgres |
 | **Development** | [`airgap-bundle-dev.sh`](airgap-bundle-dev.sh) | CPU-only host (teammate, demo box) | 4 images: backend, frontend, postgres, **mediamtx**, plus the `rtsp-publisher` script and an empty `test-stream/` for fake-camera testing |
+| **Frontend-only** | [`airgap-bundle-frontend.sh`](airgap-bundle-frontend.sh) | Offline PC where the backend runs **natively** (Python packages already installed on the host) | 1 image: frontend (nginx + built SPA). ~21 MB gzipped. |
+| **Frontend-only / editable** | [`airgap-bundle-frontend-dev.sh`](airgap-bundle-frontend-dev.sh) | Same as above, but you need to **edit the UI source on the offline PC** and rebuild without internet | 1 image: frontend (nginx + built SPA + **source code** + **node_modules** + node + a `rebuild` helper). ~161 MB gzipped. |
 
-Pick the one that fits the target. Both produce a clean image-only
-bundle — `docker save` does not include Docker volumes, so the
+Pick the one that fits the target. All produce clean image-only
+bundles — `docker save` does not include Docker volumes, so the
 recipient always boots with an empty database and empty clip store.
 Your local history stays on your machine.
 
@@ -311,6 +313,181 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml \
 The fake camera URL to add in the dashboard is `rtsp://mediamtx:8554/stream1`
 (use the docker service name `mediamtx`, not `localhost`, since the
 backend resolves it through the docker bridge network).
+
+## TL;DR — frontend-only bundle (backend runs natively on the offline PC)
+
+Use this when the offline PC already has the backend's Python
+environment installed and you only need to ship the UI. The frontend
+container's nginx proxies `/api/` to `host.docker.internal:8000`,
+which docker maps to the host gateway — so the natively-running
+backend on the host is reachable from inside the container.
+
+```bash
+# on dev box (internet)
+./airgap-bundle-frontend.sh airgap-bundle-frontend
+tar czf airgap-bundle-frontend.tar.gz airgap-bundle-frontend/
+
+# transfer (~21 MB)
+scp airgap-bundle-frontend.tar.gz offline-pc:/tmp/
+
+# on the offline PC (docker installed; backend running natively)
+tar xzf /tmp/airgap-bundle-frontend.tar.gz
+cd airgap-bundle-frontend && ./run-frontend.sh
+
+# dashboard at http://<offline-pc-ip>:5173
+```
+
+### Important: backend must bind to `0.0.0.0`, not `127.0.0.1`
+
+The container reaches the host through the docker bridge, not the
+host's loopback. A backend bound to `127.0.0.1:8000` rejects the
+connection because it only accepts traffic on the loopback interface.
+
+Start uvicorn the same way the docker entrypoint does (see
+[`backend/entrypoint.sh`](backend/entrypoint.sh)):
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+| Bind address | Reachable from native host? | Reachable from frontend container? |
+|---|---|---|
+| `127.0.0.1:8000` | Yes | **No** — connection refused |
+| `0.0.0.0:8000`   | Yes | Yes (via `host.docker.internal`) |
+
+### What's inside `airgap-bundle-frontend/`
+
+```
+airgap-bundle-frontend/
+├── frontend-image.tar    ← lossprev/frontend-standalone:1.0 (~49 MB raw, ~21 MB gzipped)
+├── run-frontend.sh       ← docker load + docker run, one command
+└── README.txt
+```
+
+`run-frontend.sh` runs the container with:
+
+```bash
+docker run -d --name lp_frontend --restart unless-stopped \
+    --add-host=host.docker.internal:host-gateway \
+    -p 5173:80 \
+    lossprev/frontend-standalone:1.0
+```
+
+The `--add-host=host.docker.internal:host-gateway` flag is what
+gives the container a stable DNS name for the host. It works on
+Linux Docker 20.10+, macOS, and Windows.
+
+Override the listening port with `PORT=8080 ./run-frontend.sh`.
+
+### How this differs from the production bundle
+
+| | Production bundle | Frontend-only bundle |
+|---|---|---|
+| Bundle size | ~5.2 GB | **~21 MB** |
+| Images shipped | backend, frontend, postgres | frontend only |
+| Backend runtime | docker container | native Python on the host |
+| Postgres runtime | docker container | whatever the native backend uses |
+| Frontend nginx upstream | `http://backend:8000` (docker DNS) | `http://host.docker.internal:8000` (docker bridge → host) |
+| Best.pt placement | mounted into container | wherever the native backend expects it |
+| GPU access | needs `nvidia-container-toolkit` | not docker's concern — native backend handles it directly |
+
+## TL;DR — frontend-only editable bundle (edit source on the offline PC)
+
+Same shape as the frontend-only bundle above, but the image also
+contains the **full source tree, node_modules, node, and nginx** — so
+you can `docker exec` in, edit a file with vi, run `rebuild`, and see
+the change in your browser. No internet needed on the offline PC even
+when changing the UI.
+
+Build and ship:
+
+```bash
+# on dev box (internet)
+./airgap-bundle-frontend-dev.sh airgap-bundle-frontend-dev
+tar czf airgap-bundle-frontend-dev.tar.gz airgap-bundle-frontend-dev/
+
+# transfer (~161 MB — ~8× the size of the non-editable bundle)
+scp airgap-bundle-frontend-dev.tar.gz offline-pc:/tmp/
+
+# on the offline PC
+tar xzf /tmp/airgap-bundle-frontend-dev.tar.gz
+cd airgap-bundle-frontend-dev && ./run-frontend-dev.sh
+
+# dashboard at http://<offline-pc-ip>:5173
+```
+
+### Three ways to edit on the offline PC
+
+**1. Edit inside the container (no host-side files needed)**
+
+```bash
+docker exec -it lp_frontend sh
+cd /app/src
+vi App.tsx                       # busybox vi is included
+exit
+docker exec lp_frontend rebuild  # runs `npm run build` inside /app
+# refresh browser
+```
+
+**2. Copy a file out, edit on the host, copy it back**
+
+Useful when the host has a real editor (nano, vim, VS Code).
+
+```bash
+docker cp lp_frontend:/app/src/App.tsx ./App.tsx
+nano ./App.tsx
+docker cp ./App.tsx lp_frontend:/app/src/App.tsx
+docker exec lp_frontend rebuild
+```
+
+**3. Bind-mount your own source folder over the baked-in one**
+
+Useful when the offline PC has a full checkout of `frontend/src/` and
+you want to work directly on those files. The baked-in source acts
+only as a fallback if the mount is empty.
+
+```bash
+docker rm -f lp_frontend
+docker run -d --name lp_frontend \
+    --add-host=host.docker.internal:host-gateway \
+    -p 5173:80 \
+    -v /path/to/your/src:/app/src \
+    lossprev/frontend-standalone-dev:1.0
+docker exec lp_frontend rebuild
+```
+
+### What's inside `airgap-bundle-frontend-dev/`
+
+```
+airgap-bundle-frontend-dev/
+├── frontend-dev-image.tar   ← lossprev/frontend-standalone-dev:1.0 (~357 MB raw, ~161 MB gzipped)
+├── run-frontend-dev.sh      ← docker load + docker run, one command
+└── README.txt
+```
+
+The image is built from [`frontend/Dockerfile.dev`](frontend/Dockerfile.dev),
+which uses `node:20-alpine` as the base, installs nginx via `apk`,
+runs `npm ci` to populate `/app/node_modules`, copies the source,
+runs `npm run build` once, and symlinks `/usr/share/nginx/html → /app/dist`
+so any subsequent rebuild is picked up immediately by nginx without a
+reload.
+
+A small `rebuild` script is installed at `/usr/local/bin/rebuild`
+inside the image — that's the helper you run after editing.
+
+### When to pick the editable bundle vs. the regular frontend-only bundle
+
+| | Frontend-only (`airgap-bundle-frontend.sh`) | Frontend-only **editable** (`airgap-bundle-frontend-dev.sh`) |
+|---|---|---|
+| Bundle size | ~21 MB | ~161 MB |
+| Image contents | nginx + built `dist/` | nginx + node + npm + source + node_modules + `dist/` + `rebuild` helper |
+| Can edit on offline PC? | **No** — image has no source | **Yes** — three workflows (exec, docker cp, bind-mount) |
+| Recommended for | Ship-and-forget deployments | Iterating on UI directly on the offline PC |
+| Update workflow | Rebuild image on dev box, re-ship 21 MB tarball | Either re-ship 161 MB OR edit-rebuild in-container |
+
+If your offline PC is just a "use the app" terminal, take the 21 MB
+bundle. If your offline PC is also where you'll be developing or
+demoing changes, take the 161 MB editable bundle.
 
 ---
 

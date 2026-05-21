@@ -1,0 +1,42 @@
+# Frontend image that includes source code + node_modules + nginx, so the
+# offline PC can edit files inside the container and rebuild without
+# touching the network.
+#
+# Workflow on the offline PC after `docker run`:
+#   docker exec -it lp_frontend sh         # shell into the container
+#   cd /app/src && vi whatever.tsx          # edit (alpine has busybox vi)
+#   rebuild                                  # helper that runs `npm run build`
+#   (refresh browser — nginx serves /app/dist via symlink, no reload needed)
+
+FROM node:20-alpine
+
+RUN apk add --no-cache nginx
+
+WORKDIR /app
+
+# Install dependencies first so this layer caches across rebuilds.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+# Copy the rest of the source (src/, public/, tsconfig*, vite.config.ts, etc.)
+COPY . .
+
+# Initial production build.
+RUN npm run build
+
+# Point the standard nginx html dir at /app/dist so the existing nginx
+# config (root /usr/share/nginx/html;) still works AND any future
+# `npm run build` inside the container is picked up immediately.
+RUN mkdir -p /usr/share/nginx \
+    && ln -sfn /app/dist /usr/share/nginx/html
+
+# Alpine's nginx package looks here for site configs.
+COPY nginx.standalone.conf /etc/nginx/http.d/default.conf
+
+# Helper command: `docker exec lp_frontend rebuild` runs the production build.
+RUN printf '#!/bin/sh\nset -e\ncd /app\necho "[rebuild] running npm run build..."\nnpm run build\necho "[rebuild] done. refresh your browser."\n' > /usr/local/bin/rebuild \
+    && chmod +x /usr/local/bin/rebuild
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

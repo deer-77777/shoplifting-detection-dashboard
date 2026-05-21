@@ -39,8 +39,11 @@ shoplifting-detection-dashboard/
 │   └── images/                 # drop training images here for the slideshow
 ├── docker-compose.yml          # production stack (GPU)
 ├── docker-compose.dev.yml      # dev override (CPU + mediamtx + publisher)
-├── airgap-bundle.sh            # builds + saves images for offline transfer
-└── docs/                       # ← you are here
+├── airgap-bundle.sh                # offline transfer — full stack (backend + frontend + postgres)
+├── airgap-bundle-dev.sh            # offline transfer — full stack + CPU + test infra
+├── airgap-bundle-frontend.sh       # offline transfer — frontend only (~21 MB, when backend runs natively)
+├── airgap-bundle-frontend-dev.sh   # offline transfer — frontend + source + node_modules (~161 MB, editable offline)
+└── docs/                           # ← you are here
 ```
 
 ---
@@ -342,8 +345,18 @@ deploy a new version to a store:
 1. Bump `lossprev/backend:1.0` and `lossprev/frontend:1.0` in
    `docker-compose.yml` to `:1.1` (or whatever).
 2. `docker compose build` on an internet host.
-3. `./airgap-bundle.sh airgap-bundle` to assemble the transfer folder.
-4. Ship the folder; on the target, `./install.sh` does
-   `docker load` + `docker compose up -d`.
+3. Pick the bundle script that matches the target:
+   - `./airgap-bundle.sh` — full GPU stack in containers (~5.2 GB)
+   - `./airgap-bundle-dev.sh` — full CPU stack + test infra (~5.3 GB)
+   - `./airgap-bundle-frontend.sh` — frontend only (~21 MB), when the
+     target runs the backend natively in its own Python environment
+   - `./airgap-bundle-frontend-dev.sh` — frontend + source + node_modules
+     (~161 MB), same as above but lets you edit the UI source on the
+     offline PC and rebuild without internet
+4. Ship the resulting `.tar.gz`; on the target, the included
+   `install.sh` / `install-dev.sh` / `run-frontend.sh` handles
+   `docker load` + `docker run` (or `compose up`).
 5. Volumes survive across image rebuilds, so the DB and clip history
    are preserved unless you explicitly `down -v`.
+
+See [AIRGAP.md](../AIRGAP.md) for the full walkthrough of each bundle.

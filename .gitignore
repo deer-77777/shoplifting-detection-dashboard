@@ -16,6 +16,7 @@ backend/storage/
 
 # Frontend
 frontend/node_modules/
+frontend/node_modules.zip
 frontend/dist/
 frontend/.vite/
 
@@ -29,9 +30,10 @@ frontend/.vite/
 *.log
 
 # Air-gap bundles (output of airgap-bundle*.sh — multi-GB, never commit)
-# Keep the scripts themselves — only the produced folders + tarballs are excluded.
-airgap-bundle/
-airgap-bundle-dev/
+# Pattern matches every produced directory (airgap-bundle/, airgap-bundle-dev/,
+# airgap-bundle-frontend/, airgap-bundle-frontend-dev/, …) and every gzipped
+# tar. The scripts themselves are .sh files and stay tracked.
+airgap-bundle*/
 airgap-bundle*.tar.gz
 
 test-stream/images
